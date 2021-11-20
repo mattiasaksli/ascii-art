@@ -9,6 +9,7 @@ using namespace cv;
 
 const std::string ASCII_MATRIX = "`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
+// No input validation
 std::string getImageFilename(int argc, char* argv[])
 {
 	std::string filename;
@@ -19,7 +20,7 @@ std::string getImageFilename(int argc, char* argv[])
 	}
 	else
 	{
-		std::cout << "Please enter the image filename: ";
+		std::cout << "Enter the image filename: ";
 		std::cin >> filename;
 		std::cout << std::endl;
 	}
@@ -27,10 +28,25 @@ std::string getImageFilename(int argc, char* argv[])
 	return filename;
 }
 
-void resizeImage(Mat& image, char* scalar)
+// No input validation
+void resizeImage(Mat& image, int argc, char* argv[])
 {
-	double resizeScalar = std::stod(scalar);
-	resize(image, image, Size(), resizeScalar, resizeScalar, INTER_AREA);
+	double resizeScalar;
+	if (argc > 2)
+	{
+		resizeScalar = std::stod(argv[2]);
+	}
+	else
+	{
+		std::cout << "The image should be downsized to [0, 1]: ";
+		std::cin >> resizeScalar;
+		std::cout << std::endl;
+	}
+
+	if (resizeScalar < 1.0)
+	{
+		resize(image, image, Size(), resizeScalar, resizeScalar, INTER_AREA);
+	}
 }
 
 float sRGBtoLinearRGB(float colorChannel)
@@ -118,19 +134,10 @@ void printAsciiImage(const Mat& image, int width, int height, short widthRatio =
 PCONSOLE_FONT_INFOEX saveOldConsoleFontInfo(const HANDLE& consoleOutputHandle)
 {
 	PCONSOLE_FONT_INFOEX lpConsoleCurrentFontEx = new CONSOLE_FONT_INFOEX();
-
+	lpConsoleCurrentFontEx->cbSize = sizeof(CONSOLE_FONT_INFOEX);
 	GetCurrentConsoleFontEx(consoleOutputHandle, 0, lpConsoleCurrentFontEx);
 
 	return lpConsoleCurrentFontEx;
-}
-
-PCONSOLE_SCREEN_BUFFER_INFOEX saveConsoleSizeInfo(const HANDLE& consoleOutputHandle)
-{
-	PCONSOLE_SCREEN_BUFFER_INFOEX lpConsoleCurrentScreenBufferEx = new CONSOLE_SCREEN_BUFFER_INFOEX();
-
-	GetConsoleScreenBufferInfoEx(consoleOutputHandle, lpConsoleCurrentScreenBufferEx);
-
-	return lpConsoleCurrentScreenBufferEx;
 }
 
 void setFontToConsolasWithSize(const HANDLE& consoleOutputHandle, short x, short y)
@@ -142,7 +149,7 @@ void setFontToConsolasWithSize(const HANDLE& consoleOutputHandle, short x, short
 	swprintf_s(lpConsoleCurrentFontEx->FaceName, L"Consolas");
 	lpConsoleCurrentFontEx->dwFontSize.X = x;
 	lpConsoleCurrentFontEx->dwFontSize.Y = y;
-	SetCurrentConsoleFontEx(consoleOutputHandle, 0, lpConsoleCurrentFontEx);
+	SetCurrentConsoleFontEx(consoleOutputHandle, false, lpConsoleCurrentFontEx);
 
 	delete lpConsoleCurrentFontEx;
 }
@@ -160,7 +167,7 @@ void setConsoleSize(const HANDLE& consoleOutputHandle, short width, short height
 	bufferSize.Y = 9999;
 
 	SetConsoleScreenBufferSize(consoleOutputHandle, bufferSize);
-	SetConsoleWindowInfo(consoleOutputHandle, true , &windowSize);
+	SetConsoleWindowInfo(consoleOutputHandle, true, &windowSize);
 }
 
 int main(int argc, char* argv[])
@@ -174,17 +181,15 @@ int main(int argc, char* argv[])
 	if (image.empty())
 	{
 		std::cerr << "Image not found!" << std::endl;
-		waitKey(0);
+		system("pause");
 		return EXIT_FAILURE;
 	}
 
-	if (argc > 2)
-	{
-		resizeImage(image, argv[2]);
-	}
+
+	resizeImage(image, argc, argv);
 
 	// Show image inside a window.
-	imshow("Source Image", image);
+	//imshow("Source Image", image);
 
 	int width = image.cols;
 	int height = image.rows;
@@ -196,20 +201,19 @@ int main(int argc, char* argv[])
 
 	// Save console settings
 	PCONSOLE_FONT_INFOEX savedConsoleFont = saveOldConsoleFontInfo(out);
-	PCONSOLE_SCREEN_BUFFER_INFOEX savedConsoleSize = saveConsoleSizeInfo(out);
 
 	// Set new console settings
 	setFontToConsolasWithSize(out, 8, 8);
 	setConsoleSize(out, 2 * width + 3, height + 5);
 
 	printAsciiImage(image, width, height, 2);
-	waitKey(0);
+
+	system("pause");
 
 	// Restore old console settings
-	SetCurrentConsoleFontEx(out, 0, savedConsoleFont);
-	SetConsoleScreenBufferInfoEx(out, savedConsoleSize);
+	SetCurrentConsoleFontEx(out, false, savedConsoleFont);
+	setConsoleSize(out, 140, 50);
 	delete savedConsoleFont;
-	delete savedConsoleSize;
 
 	return EXIT_SUCCESS;
 }
