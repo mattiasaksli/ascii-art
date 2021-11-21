@@ -1,6 +1,9 @@
+﻿#define NOMINMAX
+
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <limits>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/utils/logger.hpp>
 #include <Windows.h>
@@ -9,7 +12,6 @@ using namespace cv;
 
 const std::string ASCII_MATRIX = "`^\",:;Il!i~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
 
-// No input validation
 std::string getImageFilename(int argc, char* argv[])
 {
 	std::string filename;
@@ -28,24 +30,41 @@ std::string getImageFilename(int argc, char* argv[])
 	return filename;
 }
 
-// No input validation
+
 void resizeImage(Mat& image, int argc, char* argv[])
 {
-	double resizeScalar;
+	unsigned short resizeScalar;
+
 	if (argc > 2)
 	{
-		resizeScalar = std::stod(argv[2]);
+		resizeScalar = std::stoi(argv[2]);
+
+		if (resizeScalar > 100 || resizeScalar < 0)
+		{
+			std::cerr << "Invalid image scaling value: " << resizeScalar << "! Using original image size." << std::endl;
+			return;
+		}
 	}
 	else
 	{
-		std::cout << "The image should be downsized to [0, 1]: ";
-		std::cin >> resizeScalar;
+		std::cout << "What percentage should the image be downscaled to? (Enter 100 to use the original size): ";
+
+		while (!(std::cin >> resizeScalar)
+			   || resizeScalar > 100
+			   || resizeScalar < 0)
+		{
+			std::cin.clear();
+			std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+			std::cerr << "Please enter a number between 0 and 100: ";
+		}
+
 		std::cout << std::endl;
 	}
 
-	if (resizeScalar < 1.0)
+	if (resizeScalar < 100 && resizeScalar > 0)
 	{
-		resize(image, image, Size(), resizeScalar, resizeScalar, INTER_AREA);
+		double scalar = resizeScalar / 100.0;
+		resize(image, image, Size(), scalar, scalar, INTER_AREA);
 	}
 }
 
@@ -87,8 +106,15 @@ float calculatePixelBrightness(short r, short g, short b)
 	float decimalG = g / 255.0f;
 	float decimalB = b / 255.0f;
 
-	float luminance = (0.2126f * sRGBtoLinearRGB(decimalR) + 0.7152f * sRGBtoLinearRGB(decimalG) + 0.0722f * sRGBtoLinearRGB(decimalB));
+	// Average the RGB values
+	//return (decimalR + decimalG + decimalB) / 3.0f;
 
+	// Average the min and max values of RGB
+	//float colors[3] = {decimalR, decimalG, decimalB};
+	//return (*(std::max_element(std::begin(colors), std::end(colors))) + *(std::min_element(std::begin(colors), std::end(colors)))) / 2.0f;
+
+	// Weighted average luminosity version
+	float luminance = (0.2126f * sRGBtoLinearRGB(decimalR) + 0.7152f * sRGBtoLinearRGB(decimalG) + 0.0722f * sRGBtoLinearRGB(decimalB));
 	return luminanceToPerceivedBrightness(luminance) / 100.0f;
 }
 
@@ -131,13 +157,21 @@ void printAsciiImage(const Mat& image, int width, int height, short widthRatio =
 	}
 }
 
-PCONSOLE_FONT_INFOEX saveOldConsoleFontInfo(const HANDLE& consoleOutputHandle)
+PCONSOLE_FONT_INFOEX saveCurrentConsoleFontInfo(const HANDLE& consoleOutputHandle)
 {
 	PCONSOLE_FONT_INFOEX lpConsoleCurrentFontEx = new CONSOLE_FONT_INFOEX();
 	lpConsoleCurrentFontEx->cbSize = sizeof(CONSOLE_FONT_INFOEX);
 	GetCurrentConsoleFontEx(consoleOutputHandle, 0, lpConsoleCurrentFontEx);
 
 	return lpConsoleCurrentFontEx;
+}
+
+PCONSOLE_SCREEN_BUFFER_INFO saveCurrentConsoleScreenBufferInfo(const HANDLE& consoleOutputHandle)
+{
+	PCONSOLE_SCREEN_BUFFER_INFO savedConsoleScreenBufferInfo = new CONSOLE_SCREEN_BUFFER_INFO();
+	GetConsoleScreenBufferInfo(consoleOutputHandle, savedConsoleScreenBufferInfo);
+
+	return savedConsoleScreenBufferInfo;
 }
 
 void setFontToConsolasWithSize(const HANDLE& consoleOutputHandle, short x, short y)
@@ -154,7 +188,7 @@ void setFontToConsolasWithSize(const HANDLE& consoleOutputHandle, short x, short
 	delete lpConsoleCurrentFontEx;
 }
 
-void setConsoleSize(const HANDLE& consoleOutputHandle, short width, short height)
+void setConsoleSize(const HANDLE& consoleOutputHandle, short width, short height, short currentConsoleBufferHeight)
 {
 	SMALL_RECT windowSize;
 	windowSize.Left = 0;
@@ -164,10 +198,23 @@ void setConsoleSize(const HANDLE& consoleOutputHandle, short width, short height
 
 	COORD bufferSize;
 	bufferSize.X = width;
-	bufferSize.Y = 9999;
+	if (currentConsoleBufferHeight < 2 * height)
+	{
+		bufferSize.Y = 2 * height;
+	}
 
 	SetConsoleScreenBufferSize(consoleOutputHandle, bufferSize);
 	SetConsoleWindowInfo(consoleOutputHandle, true, &windowSize);
+}
+
+void restoreConsoleSettings(const HANDLE& consoleOutputHandle, PCONSOLE_FONT_INFOEX& savedConsoleFont, PCONSOLE_SCREEN_BUFFER_INFO& savedConsoleBufferInfo)
+{
+	SetCurrentConsoleFontEx(consoleOutputHandle, false, savedConsoleFont);
+	SetConsoleScreenBufferSize(consoleOutputHandle, savedConsoleBufferInfo->dwSize);
+	SetConsoleWindowInfo(consoleOutputHandle, true, &(savedConsoleBufferInfo->srWindow));
+
+	delete savedConsoleFont;
+	delete savedConsoleBufferInfo;
 }
 
 int main(int argc, char* argv[])
@@ -185,11 +232,7 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-
 	resizeImage(image, argc, argv);
-
-	// Show image inside a window.
-	//imshow("Source Image", image);
 
 	int width = image.cols;
 	int height = image.rows;
@@ -200,20 +243,18 @@ int main(int argc, char* argv[])
 	HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
 
 	// Save console settings
-	PCONSOLE_FONT_INFOEX savedConsoleFont = saveOldConsoleFontInfo(out);
+	PCONSOLE_FONT_INFOEX savedConsoleFont = saveCurrentConsoleFontInfo(out);
+	PCONSOLE_SCREEN_BUFFER_INFO savedConsoleBufferInfo = saveCurrentConsoleScreenBufferInfo(out);
 
 	// Set new console settings
 	setFontToConsolasWithSize(out, 8, 8);
-	setConsoleSize(out, 2 * width + 3, height + 5);
+	setConsoleSize(out, 2 * width + 3, height + 5, savedConsoleBufferInfo->dwSize.Y);
 
 	printAsciiImage(image, width, height, 2);
 
 	system("pause");
 
-	// Restore old console settings
-	SetCurrentConsoleFontEx(out, false, savedConsoleFont);
-	setConsoleSize(out, 140, 50);
-	delete savedConsoleFont;
+	restoreConsoleSettings(out, savedConsoleFont, savedConsoleBufferInfo);
 
 	return EXIT_SUCCESS;
 }
