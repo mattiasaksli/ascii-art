@@ -222,6 +222,15 @@ int main(int argc, char* argv[])
 	// Disable OpenCV logging
 	utils::logging::setLogLevel(utils::logging::LogLevel::LOG_LEVEL_SILENT);
 
+	HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	// Save console settings
+	PCONSOLE_FONT_INFOEX savedConsoleFont = saveCurrentConsoleFontInfo(out);
+	PCONSOLE_SCREEN_BUFFER_INFO savedConsoleBufferInfo = saveCurrentConsoleScreenBufferInfo(out);
+
+	setFontToConsolasWithSize(out, 8, 16);
+
+	// Image input
 	std::string filename = getImageFilename(argc, argv);
 	Mat image = imread(filename);
 
@@ -240,13 +249,6 @@ int main(int argc, char* argv[])
 	std::cout << std::endl;
 	std::cout << "Image size: " << width << " x " << height << std::endl;
 
-	HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-
-	// Save console settings
-	PCONSOLE_FONT_INFOEX savedConsoleFont = saveCurrentConsoleFontInfo(out);
-	PCONSOLE_SCREEN_BUFFER_INFO savedConsoleBufferInfo = saveCurrentConsoleScreenBufferInfo(out);
-
-	// Set new console settings
 	setFontToConsolasWithSize(out, 8, 8);
 	setConsoleSize(out, 2 * width + 3, height + 5, savedConsoleBufferInfo->dwSize.Y);
 
